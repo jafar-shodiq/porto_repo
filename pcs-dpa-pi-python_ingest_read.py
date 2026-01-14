@@ -31,23 +31,23 @@ def get_data(field1_value, scroll_minute=10, scroll_size=1000):
     es = connect_elasticsearch_read()
     
     query = {
-    "_source": ["@timestamp", "field1", "field2"],
-    "query": {
-      "bool": {
-        "must": [
-          {
-            "term": {
-              "field1.keyword": {
-                "value": f"{field1_value}"
+        "_source": ["@timestamp", "field1", "field2"],
+        "query": {
+          "bool": {
+            "must": [
+              {
+                "term": {
+                  "field1.keyword": {
+                    "value": f"{field1_value}"
+                  }
+                }
               }
-            }
+            ]
           }
-        ]
-      }
+        }
+      }, 
+      "track_total_hits": "true"
     }
-  }, 
-  "track_total_hits": "true"
-}
 
     result = es_helper.scan(es, query=query, index=["logstash-mydata"], scroll=f"{scroll_minute}m", size=scroll_size)
     final_result = list(result)
