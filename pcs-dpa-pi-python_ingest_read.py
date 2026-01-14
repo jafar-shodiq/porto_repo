@@ -1,6 +1,7 @@
 from elasticsearch import Elasticsearch
 import elasticsearch.helpers as es_helper
 import pandas as pd
+from dotenv import load_dotenv
 import warnings
 warnings.filterwarnings("ignore")
 
