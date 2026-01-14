@@ -1,0 +1,168 @@
+PSEUDO
+1. MySQL - ELK: via Logstash [https://github.com/jafar-shodiq/porto_repo/blob/main/pcs-dpa-pi-logstash_sample.conf]
+2. MongoDB - ELK: via Logstash [https://github.com/jafar-shodiq/porto_repo/blob/main/pcs-dpa-pi-logstash_sample.conf]
+3. Google Sheets - ELK: via API with Python
+4. ELK - Python - ELK: transformation within Python
+
+
+# Google Sheets - ELK
+1. Create API Key "write" in Elasticsearch and specify the target index name
+2. Create the target index manually via ELK Dev Tools with index customized settings
+
+PUT /logstash-myindex
+{
+  "settings": {
+    "number_of_shards": 1,
+    "routing.allocation.total_shards_per_node" : 1,
+    "number_of_replicas": 0,
+    "index.routing.allocation.include._ip" : ["xx.xx.xx.xx"]
+  }
+}
+
+3. If we want to map the fields manually, then explicitly type in the index settings creation. if not, then let Elasticsearch decide the data type of each index on-ingestion 
+4. In Python, import the google service account (json) to the Jupyter environment
+5. In the source Gsheet, share the document with the google service account. the account can be obtained by opening the json file (copy the one that ends with .com)
+6. Script
+
+import gspread
+from elasticsearch import Elasticsearch
+import elasticsearch.helpers as es_helper
+import pandas as pd
+import json
+from dotenv import load_dotenv
+import warnings
+warnings.filterwarnings('ignore')
+
+load_dotenv()
+
+def connect_elasticsearch_write():
+    """
+    connecting elasticsearch.
+    to check whether it's connected or not: es.info().
+    expected result: matched cluster name.
+    """
+    
+    es = Elasticsearch(
+        ["https://myapi.co.id:xxx"],
+        api_key=os.getenv("ENV_KEY"),
+        verify_certs=False
+    )
+    
+    return es
+
+def init_data(spreadsheet_id, sheet_name):
+    """
+    connect with google spreadsheet via service account file
+    spreadsheet_id: string
+    sheet_name: string
+    """
+    
+    service_account_file = "/mydirx/myserviceaccount.json"
+
+    scopes = [
+        'https://www.googleapis.coma/auth/spreadsheets',
+        'https://www.googleapis.com/auth/drive'
+    ]
+
+    gc = gspread.service_account(filename=service_account_file, scopes=scopes)
+
+    spreadsheet_id = spreadsheet_id
+    spreadsheet = gc.open_by_key(spreadsheet_id)
+    worksheet = spreadsheet.worksheet(sheet_name)
+    records = worksheet.get_all_records()
+
+    df = pd.DataFrame(records)
+    df.to_csv("/mydirx/mydata.csv", sep=";", index=False)
+
+def populate_index_upsert(index_name, path, insert_batch_size=10000, insert_step_start=1):
+    """
+    upsert (if not exists then insert, else update) to elasticsearch
+    check regularly on elasticsearch while this function is running
+    expected result: all data from the dataframe 100% ingested into elasticsearch
+    index_name: string
+    path: string
+    batch_size: int
+    insert_step_start: int
+    """
+    
+    es = connect_elasticsearch_write()
+    df = pd.read_csv(path, sep=';')
+
+    start_time_step = time.time()
+    start_time_total = time.time()
+
+    insert_step_total = int(np.ceil(len(df) / insert_batch_size))
+    insert_step_count = 0 
+
+    for step_start, step_end in zip(range(0, len(df), insert_batch_size), range(insert_batch_size, len(df) + insert_batch_size, insert_batch_size)):
+        df_step = df[step_start:step_end]
+
+        for doc in df_step.apply(lambda x: x.to_dict(), axis=1):
+            body_dict = {}
+            for key, value in doc.items():
+                if key.startswith("date_") and isinstance(value, str) and value.startswith('{'):
+                    body_dict[key] = None
+                elif isinstance(value, pd.Timestamp):
+                    body_dict[key] = value.strftime("%Y-%m-%d %H:%M:%S")
+                elif pd.isna(value):
+                    body_dict[key] = None 
+                else:
+                    body_dict[key] = value
+            
+            es.update(
+                index=index_name,
+                id=body_dict["unique_id"],
+                body={
+                    'doc': body_dict,
+                    'doc_as_upsert': True
+                }
+            )
+            
+        insert_step_count += 1
+
+init_data(spreadsheet_id="myspreadsheetlink", sheet_name="mysheetname")
+populate_index_upsert(index_name="logstash-myindex", path="/mydirx/mydata.csv")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
